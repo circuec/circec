@@ -20,10 +20,10 @@ const CONFIG = [
 
 export async function GET() {
   // DEBUG - sprawdzamy czy zmienne są widoczne
-  console.log('=== DEBUG ENV ===');
-  console.log('Klucz istnieje?', !!process.env.GOLD_API_KEY);
-  console.log('Klucz:', process.env.GOLD_API_KEY?.substring(0, 15) + '...');
-  console.log('=================');
+ // console.log('=== DEBUG ENV ===');
+ // console.log('Klucz istnieje?', !!process.env.GOLD_API_KEY);
+ // console.log('Klucz:', process.env.GOLD_API_KEY?.substring(0, 15) + '...');
+  //console.log('=================');
   
   if (!process.env.GOLD_API_KEY) {
     return NextResponse.json(

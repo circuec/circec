@@ -26,11 +26,13 @@ export default function RootLayout({
             </Link>
             
             <nav className="hidden md:flex gap-6">
-              <Link href="/" className="hover:text-emerald-300 transition">Start</Link>
-              <Link href="/gospodarka-obiegu" className="hover:text-emerald-300 transition">GOZ</Link>
-              <Link href="/rynek-metali" className="hover:text-emerald-300 transition">Rynek Metali</Link>
-              <Link href="/o-nas" className="hover:text-emerald-300 transition">O nas</Link>
-            </nav>
+  <Link href="/" className="hover:text-emerald-300 transition">Start</Link>
+  <Link href="/gospodarka-obiegu" className="hover:text-emerald-300 transition">GOZ</Link>
+  <Link href="/rynek-metali" className="hover:text-emerald-300 transition">Rynek Metali</Link>
+  <Link href="/aktualnosci" className="hover:text-emerald-300 transition">Aktualności</Link>
+  <Link href="/kongres" className="hover:text-emerald-300 transition">Kongres</Link>
+  <Link href="/o-nas" className="hover:text-emerald-300 transition">O nas</Link>
+</nav>  
 
             {/* Menu mobilne (hamburger) - uproszczone */}
             <div className="md:hidden text-sm">
