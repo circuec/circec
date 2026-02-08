@@ -1,0 +1,16 @@
+name: Fetch RSS News
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Co 6 godzin: 00:00, 06:00, 12:00, 18:00
+  workflow_dispatch:  # Możliwość ręcznego uruchomienia
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Call API to fetch news
+        run: |
+          curl -X GET "https://circec.eu/api/cron/fetch-news" \
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

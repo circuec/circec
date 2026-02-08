@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
+//import { NextResponse } from 'next/server';
 import Parser from 'rss-parser';
 import { createClient } from '@supabase/supabase-js';
-
+import { NextResponse, headers } from 'next/server';
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_ANON_KEY!
