@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Klient Supabase po stronie serwera
+
+// Klient Supabase po stronie serwera — używamy SERVICE ROLE, żeby móc zapisywać do bazy
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-
 // Symbole metali w Yahoo Finance
 const METALS = [
-  { symbol: 'HG=F', name: 'Miedź', yahooSymbol: 'HG%3DF' },
-  { symbol: 'ALI=F', name: 'Aluminium', yahooSymbol: 'ALI%3DF' }, // NOWE
-  { symbol: 'ZN=F', name: 'Cynk', yahooSymbol: 'ZN%3DF' },       // NOWE
-  { symbol: 'GC=F', name: 'Złoto', yahooSymbol: 'GC%3DF' },      // alternatywa dla GoldAPI
-  { symbol: 'SI=F', name: 'Srebro', yahooSymbol: 'SI%3DF' },     // alternatywa dla GoldAPI
+  { symbol: 'HG=F', name: 'Miedź', yahooSymbol: 'HG%3DF', unit: 'USD/lb' },
+  { symbol: 'ALI=F', name: 'Aluminium', yahooSymbol: 'ALI%3DF', unit: 'USD/t' },
+  { symbol: 'ZN=F', name: 'Cynk', yahooSymbol: 'ZN%3DF', unit: 'USD/t' },
+  { symbol: 'GC=F', name: 'Złoto', yahooSymbol: 'GC%3DF', unit: 'USD/oz' },
+  { symbol: 'SI=F', name: 'Srebro', yahooSymbol: 'SI%3DF', unit: 'USD/oz' },
 ];
-
 export async function GET() {
   try {
     const results = [];

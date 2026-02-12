@@ -1,63 +1,54 @@
 // Wymusza dynamiczne renderowanie (bez cache), żebyś widział zmiany od razu podczas nauki
-export const dynamic = "force-dynamic";
+//export const dynamic = "force-dynamic";
 
 // Dodatkowo: brak rewalidacji (w praktyce: odświeżaj dane za każdym wejściem)
+//export const revalidate = 0;
+
+import { createClient } from '@supabase/supabase-js';
+import Link from 'next/link';
+
+// Wymusza dynamiczne renderowanie (bez cache), żeby widzieć zmiany od razu w dev
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import { createClient } from "@supabase/supabase-js";
-import Link from "next/link";
-
-// Server Component - renderuje się na serwerze (SEO)
 export default async function AktualnosciPage({
-  searchParams,
+  searchParams
 }: {
-  searchParams: { kategoria?: string };
+  // ✅ Next 16 potrafi podać searchParams jako Promise – więc to uwzględniamy
+  searchParams: Promise<{ kategoria?: string }>
 }) {
-  // 1) Tworzymy klienta Supabase na serwerze
-  //    Używamy ANON_KEY, bo tu tylko ODCZYTUJEMY dane (SELECT).
+  // ✅ Rozpakowujemy Promise (to usuwa błąd “searchParams is a Promise”)
+  const { kategoria: category } = await searchParams;
+
+  // Klient Supabase po stronie serwera
   const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_ANON_KEY!
   );
 
-  // 2) Pobieramy parametr z URL: /aktualnosci?kategoria=...
-  const category = searchParams.kategoria;
-
-  // 3) Budujemy zapytanie do tabeli news
-  //    UWAGA: pokazujesz tylko published (to znaczy: review nie będzie widoczne publicznie)
+  // Budujemy zapytanie do tabeli news (public widzi tylko published)
   let query = supabase
-    .from("news")
-    .select("*, category:news_categories(*)")
-    .eq("status", "published")
-    .order("published_at", { ascending: false })
+    .from('news')
+    .select('*, category:news_categories(*)')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false })
     .limit(20);
 
-  // 4) Jeśli jest filtr kategorii - dopisujemy warunek
+  // Jeśli w URL jest ?kategoria=..., filtrujemy
   if (category) {
-    query = query.eq("category_slug", category);
+    query = query.eq('category_slug', category);
   }
 
-  // 5) Wykonujemy zapytanie (dopiero TERAZ query istnieje)
-  const { data: news, error: newsError } = await query;
+  const { data: news } = await query;
 
-  // 6) Jeśli jest błąd - logujemy do terminala (żeby łatwo diagnozować)
-  if (newsError) {
-    console.error("Błąd pobierania newsów:", newsError);
-  }
+  // Kategorie do filtrów
+  const { data: categories } = await supabase
+    .from('news_categories')
+    .select('*')
+    .order('name');
 
-  // 7) Pobieramy kategorie do filtrowania
-  const { data: categories, error: catError } = await supabase
-    .from("news_categories")
-    .select("*")
-    .order("name");
-
-  if (catError) {
-    console.error("Błąd pobierania kategorii:", catError);
-  }
-
-  // 8) Render UI
   return (
-    <div className="max-w-6xl mx-auto px-4 py-12">
+      <div className="max-w-6xl mx-auto px-4 py-12">
       <h1 className="text-3xl font-bold text-slate-900 mb-2">Aktualności GOZ</h1>
       <p className="text-slate-600 mb-8">
         Najnowsze informacje z obszaru gospodarki obiegu zamkniętego, recyklingu i zrównoważonego rozwoju.
