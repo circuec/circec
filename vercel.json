@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/fetch-news?secret=TWÓJ_CRON_SECRET",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

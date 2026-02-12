@@ -1,21 +1,46 @@
-//import { NextResponse } from 'next/server';
-import Parser from 'rss-parser';
-import { createClient } from '@supabase/supabase-js';
-import { NextResponse, headers } from 'next/server';
+// Importujemy typy i narzędzia z Next.js do obsługi endpointów API
+import { NextRequest, NextResponse } from 'next/server'
+
+// Biblioteka do czytania kanałów RSS (newsów)
+import Parser from 'rss-parser'
+
+// Oficjalny klient Supabase do komunikacji z bazą danych
+import { createClient } from '@supabase/supabase-js'
+
+// Wymuszamy uruchamianie tego endpointu w środowisku Node.js
+// (RSS i Supabase NIE działają w Edge Runtime)
+export const runtime = 'nodejs'
+
+/**
+ * Tworzymy połączenie z Supabase
+ * 
+ * UŻYWAMY SERVICE ROLE KEY, bo:
+ * - ten endpoint zapisuje dane do bazy
+ * - jest uruchamiany tylko na serwerze (cron)
+ * - klucz NIE trafia do przeglądarki
+ */
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
-const rssParser = new Parser();
+// Tworzymy parser RSS
+const rssParser = new Parser()
 
-// Lista źródeł RSS o GOZ/recyklingu
+/**
+ * Lista źródeł RSS
+ * Każde źródło opisujemy:
+ * - name: nazwa wyświetlana
+ * - url: adres RSS
+ * - category: kategoria w Twojej bazie
+ * - language: język artykułów
+ */
 const RSS_SOURCES = [
   {
     name: 'Recycling Portal',
     url: 'https://recyclingportal.eu/feed/',
     category: 'recykling',
-    language: 'de' // niemiecki, ale można tłumaczyć
+    language: 'de'
   },
   {
     name: 'Waste Management World',
@@ -29,68 +54,125 @@ const RSS_SOURCES = [
     category: 'goz',
     language: 'en'
   }
-];
+]
 
-export async function GET() {
-  // Chronometraż - tylko z cron lub sekretem
-  const authHeader = headers().get('authorization');
+/**
+ * Endpoint GET
+ * Ten endpoint:
+ * - jest wywoływany przez CRON (np. Vercel Cron)
+ * - pobiera newsy z RSS
+ * - zapisuje je do Supabase
+ */
+export async function GET(req: NextRequest) {
+
+  /**
+   * ZABEZPIECZENIE:
+   * Sprawdzamy czy zapytanie przyszło z crona,
+   * a nie od przypadkowej osoby z internetu
+   */
+  const authHeader = req.headers.get('authorization')
+
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    )
   }
 
-  const results = [];
+  // Tu będziemy zbierać info o zapisanych artykułach
+  const results: Array<{ source: string; title: string }> = []
 
+  /**
+   * Iterujemy po każdym źródle RSS
+   */
   for (const source of RSS_SOURCES) {
     try {
-      const feed = await rssParser.parseURL(source.url);
-      
-      for (const item of feed.items.slice(0, 5)) { // tylko 5 najnowszych
-        // Sprawdź czy już mamy ten artykuł (po linku)
-        const { data: existing } = await supabase
+      // Pobieramy i parsujemy RSS
+      const feed = await rssParser.parseURL(source.url)
+
+      /**
+       * Bierzemy tylko 5 najnowszych artykułów,
+       * żeby:
+       * - nie przeciążyć API
+       * - nie przekroczyć limitu czasu na Vercel
+       */
+      for (const item of feed.items.slice(0, 5)) {
+
+        // Jeśli artykuł nie ma tytułu lub linku — pomijamy
+        if (!item.title || !item.link) continue
+
+        /**
+         * Sprawdzamy, czy artykuł już istnieje w bazie
+         * (po unikalnym linku zewnętrznym)
+         */
+        const { data: existing, error: existingError } = await supabase
           .from('news')
           .select('id')
           .eq('external_id', item.link)
-          .single();
+          .maybeSingle()
 
-        if (existing) {
-          console.log(`Pominięto (już istnieje): ${item.title}`);
-          continue;
+        // Jeśli był błąd przy sprawdzaniu — pomijamy
+        if (existingError) {
+          console.error('Błąd sprawdzania istnienia:', existingError)
+          continue
         }
 
-        // Generuj slug z tytułu
-        const slug = item.title
-          ?.toLowerCase()
-          .replace(/[^a-z0-9ąćęłńóśźż]+/g, '-')
-          .replace(/(^-|-$)/g, '')
-          .substring(0, 80) || 'news-' + Date.now();
+        // Jeśli artykuł już jest w bazie — pomijamy
+        if (existing) continue
 
-        // Wstaw do bazy ze statusem 'review' (do przejrzenia)
-        const { error } = await supabase.from('news').insert({
-          title: item.title,
-          slug: slug + '-' + Date.now(), // unikalny
-          excerpt: item.contentSnippet?.substring(0, 300) || '',
-          content: item.content || item['content:encoded'] || '',
-          source_type: 'rss',
-          source_name: source.name,
-          source_url: item.link,
-          external_id: item.link,
-          category_slug: source.category,
-          status: 'review', // ❗ nie published - czeka na akceptację
-          published_at: item.pubDate ? new Date(item.pubDate) : new Date()
-        });
+        /**
+         * Generujemy slug (adres URL) z tytułu
+         */
+        const baseSlug =
+          item.title
+            .toLowerCase()
+            .replace(/[^a-z0-9ąćęłńóśźż]+/g, '-')
+            .replace(/(^-|-$)/g, '')
+            .substring(0, 80)
 
+        /**
+         * Zapisujemy artykuł do Supabase
+         * status = 'review' → artykuł czeka na akceptację
+         */
+        const { error } = await supabase
+          .from('news')
+          .insert({
+            title: item.title,
+            slug: `${baseSlug}-${Date.now()}`,
+            excerpt: item.contentSnippet?.substring(0, 300) || '',
+            content: (item as any).content || '',
+            source_type: 'rss',
+            source_name: source.name,
+            source_url: item.link,
+            external_id: item.link,
+            category_slug: source.category,
+            status: 'review',
+            published_at: item.pubDate
+              ? new Date(item.pubDate)
+              : new Date()
+          })
+
+        // Jeśli zapis się udał — dodajemy do wyników
         if (!error) {
-          results.push({ source: source.name, title: item.title?.substring(0, 50) });
+          results.push({
+            source: source.name,
+            title: item.title.substring(0, 50)
+          })
+        } else {
+          console.error('Błąd zapisu do Supabase:', error)
         }
       }
     } catch (err) {
-      console.error(`Błąd RSS ${source.name}:`, err);
+      console.error(`Błąd RSS (${source.name}):`, err)
     }
   }
 
-  return NextResponse.json({ 
-    success: true, 
+  /**
+   * Odpowiedź końcowa — informacja ile artykułów zapisano
+   */
+  return NextResponse.json({
+    success: true,
     fetched: results.length,
-    items: results 
-  });
+    items: results
+  })
 }

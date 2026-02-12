@@ -1,0 +1,12 @@
+{
+  // VS Code nie będzie analizował plików generowanych przez Next w trybie dev
+  "files.watcherExclude": {
+    "**/.next/**": true
+  },
+  "search.exclude": {
+    "**/.next/**": true
+  },
+  "typescript.tsserver.exclude": [
+    "**/.next/**"
+  ]
+}

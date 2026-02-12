@@ -1,75 +1,98 @@
-import { createClient } from '@supabase/supabase-js';
-import Link from 'next/link';
+// Wymusza dynamiczne renderowanie (bez cache), żebyś widział zmiany od razu podczas nauki
+export const dynamic = "force-dynamic";
 
-// Server Component - renderuje się na serwerze (SEO!)
+// Dodatkowo: brak rewalidacji (w praktyce: odświeżaj dane za każdym wejściem)
+export const revalidate = 0;
+
+import { createClient } from "@supabase/supabase-js";
+import Link from "next/link";
+
+// Server Component - renderuje się na serwerze (SEO)
 export default async function AktualnosciPage({
-  searchParams
+  searchParams,
 }: {
-  searchParams: { kategoria?: string }
+  searchParams: { kategoria?: string };
 }) {
+  // 1) Tworzymy klienta Supabase na serwerze
+  //    Używamy ANON_KEY, bo tu tylko ODCZYTUJEMY dane (SELECT).
   const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_ANON_KEY!
   );
-  
-  const category = searchParams.kategoria;
-  
-  // Buduj zapytanie
-  let query = supabase
-    .from('news')
-    .select('*, category:news_categories(*)')
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-    .limit(20);
-    
-  if (category) {
-    query = query.eq('category_slug', category);
-  }
-  
-  const { data: news } = await query;
-  
-  // Pobierz kategorie do filtrów
-  const { data: categories } = await supabase
-    .from('news_categories')
-    .select('*')
-    .order('name');
 
+  // 2) Pobieramy parametr z URL: /aktualnosci?kategoria=...
+  const category = searchParams.kategoria;
+
+  // 3) Budujemy zapytanie do tabeli news
+  //    UWAGA: pokazujesz tylko published (to znaczy: review nie będzie widoczne publicznie)
+  let query = supabase
+    .from("news")
+    .select("*, category:news_categories(*)")
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(20);
+
+  // 4) Jeśli jest filtr kategorii - dopisujemy warunek
+  if (category) {
+    query = query.eq("category_slug", category);
+  }
+
+  // 5) Wykonujemy zapytanie (dopiero TERAZ query istnieje)
+  const { data: news, error: newsError } = await query;
+
+  // 6) Jeśli jest błąd - logujemy do terminala (żeby łatwo diagnozować)
+  if (newsError) {
+    console.error("Błąd pobierania newsów:", newsError);
+  }
+
+  // 7) Pobieramy kategorie do filtrowania
+  const { data: categories, error: catError } = await supabase
+    .from("news_categories")
+    .select("*")
+    .order("name");
+
+  if (catError) {
+    console.error("Błąd pobierania kategorii:", catError);
+  }
+
+  // 8) Render UI
   return (
     <div className="max-w-6xl mx-auto px-4 py-12">
       <h1 className="text-3xl font-bold text-slate-900 mb-2">Aktualności GOZ</h1>
       <p className="text-slate-600 mb-8">
         Najnowsze informacje z obszaru gospodarki obiegu zamkniętego, recyklingu i zrównoważonego rozwoju.
       </p>
-      
+
       {/* Filtry kategorii */}
       <div className="flex flex-wrap gap-2 mb-8">
-        <Link 
+        <Link
           href="/aktualnosci"
           className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-            !category ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            !category ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
           }`}
         >
           Wszystkie
         </Link>
-        {categories?.map((cat) => (
+
+        {categories?.map((cat: any) => (
           <Link
             key={cat.slug}
             href={`/aktualnosci?kategoria=${cat.slug}`}
             className={`px-4 py-2 rounded-full text-sm font-medium transition ${
-              category === cat.slug 
-                ? 'bg-emerald-600 text-white' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              category === cat.slug
+                ? "bg-emerald-600 text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
             {cat.name}
           </Link>
         ))}
       </div>
-      
+
       {/* Lista aktualności */}
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {news?.map((item) => (
-          <article 
+        {news?.map((item: any) => (
+          <article
             key={item.id}
             className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition"
           >
@@ -77,7 +100,7 @@ export default async function AktualnosciPage({
               <div className="h-48 bg-gray-200 relative">
                 <img src={item.image_url} alt={item.title} className="w-full h-full object-cover" />
                 {item.category && (
-                  <span 
+                  <span
                     className="absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-bold text-white"
                     style={{ backgroundColor: item.category.color }}
                   >
@@ -86,10 +109,10 @@ export default async function AktualnosciPage({
                 )}
               </div>
             )}
-            
+
             <div className="p-6">
               <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
-                <span>{new Date(item.published_at).toLocaleDateString('pl-PL')}</span>
+                <span>{item.published_at ? new Date(item.published_at).toLocaleDateString("pl-PL") : ""}</span>
                 {item.source_name && (
                   <>
                     <span>•</span>
@@ -97,26 +120,26 @@ export default async function AktualnosciPage({
                   </>
                 )}
               </div>
-              
+
               <h2 className="text-lg font-bold text-slate-900 mb-3 line-clamp-2">
                 <Link href={`/aktualnosci/${item.slug}`} className="hover:text-emerald-700">
                   {item.title}
                 </Link>
               </h2>
-              
+
               <p className="text-slate-600 text-sm line-clamp-3 mb-4">
-                {item.excerpt || item.ai_summary || 'Brak podsumowania...'}
+                {item.excerpt || item.ai_summary || "Brak podsumowania..."}
               </p>
-              
+
               <div className="flex items-center justify-between">
-                <Link 
+                <Link
                   href={`/aktualnosci/${item.slug}`}
                   className="text-emerald-600 text-sm font-medium hover:text-emerald-800"
                 >
                   Czytaj więcej →
                 </Link>
-                
-                {item.source_type === 'ai-generated' && (
+
+                {item.source_type === "ai-generated" && (
                   <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
                     AI
                   </span>
@@ -126,11 +149,9 @@ export default async function AktualnosciPage({
           </article>
         ))}
       </div>
-      
-      {news?.length === 0 && (
-        <div className="text-center py-12 text-slate-500">
-          Brak aktualności w tej kategorii.
-        </div>
+
+      {(!news || news.length === 0) && (
+        <div className="text-center py-12 text-slate-500">Brak aktualności w tej kategorii.</div>
       )}
     </div>
   );
