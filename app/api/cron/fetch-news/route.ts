@@ -65,18 +65,44 @@ const RSS_SOURCES = [
  */
 export async function GET(req: NextRequest) {
 
-  /**
-   * ZABEZPIECZENIE:
-   * Sprawdzamy czy zapytanie przyszło z crona,
-   * a nie od przypadkowej osoby z internetu
-   */
-  const authHeader = req.headers.get('authorization')
+                                /**
+                                 * ZABEZPIECZENIE:
+                                 * Sprawdzamy czy zapytanie przyszło z crona,
+                                 * a nie od przypadkowej osoby z internetu**/
+ 
 
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+                              
+ /**
+   * ZABEZPIECZENIE ENDPOINTU (2 tryby):
+   * 1) Vercel Cron → wysyła automatycznie nagłówek: x-vercel-cron: 1
+   * 2) Ręczne wywołanie (np. PowerShell) → Authorization: Bearer CRON_SECRET
+   *
+   * Dzięki temu:
+   * - cron z Vercel działa automatycznie,
+   * - Ty możesz testować endpoint ręcznie.
+   */
+  const isFromVercelCron = req.headers.get('x-vercel-cron') === '1';
+
+  const authHeader = req.headers.get('authorization') || '';
+  const expected = `Bearer ${process.env.CRON_SECRET || ''}`;
+
+  const isAuthorizedBySecret =
+    !!process.env.CRON_SECRET && authHeader.trim() === expected.trim();
+
+  if (!isFromVercelCron && !isAuthorizedBySecret) {
     return NextResponse.json(
-      { error: 'Unauthorized' },
+      {
+        error: 'Unauthorized',
+        // Bezpieczny debug — nie pokazujemy sekretów, tylko „czy coś przyszło”
+        debug: {
+          isFromVercelCron,
+          hasAuthHeader: !!authHeader,
+          authHeaderStartsWithBearer: authHeader.toLowerCase().startsWith('bearer '),
+          hasCronSecretEnv: !!process.env.CRON_SECRET,
+        },
+      },
       { status: 401 }
-    )
+    );
   }
 
   // Tu będziemy zbierać info o zapisanych artykułach
