@@ -82,7 +82,8 @@ export async function GET(req: NextRequest) {
 
   const isAuthorizedBySecret =
     !!process.env.CRON_SECRET && authHeader.trim() === expected.trim();
-
+let insertErrors = 0;
+let lastInsertError: any = null;
   if (!isFromVercelCron && !isAuthorizedBySecret) {
     return NextResponse.json(
       {
@@ -221,20 +222,29 @@ const categorySlug = CATEGORY_ALIASES[categoryKey] ?? source.category;
           source_name: source.name,
           source_url: item.link,
           external_id: item.link,
-        
+          category_slug: categorySlug, // lub source.category jeśli jeszcze bez aliasów
           status: "review",
-          category_slug: categorySlug,
           published_at: item.pubDate ? new Date(item.pubDate) : new Date(),
         });
 
-        if (!error) {
+
+        if (error) {
+          insertErrors++;
+          lastInsertError = {
+            message: error.message,
+            details: (error as any).details,
+            hint: (error as any).hint,
+            code: (error as any).code,
+          };
+          console.error("Błąd zapisu do Supabase:", error);
+        } else {
           savedResults.push({
             source: source.name,
             title: item.title.substring(0, 60),
           });
-        } else {
-          console.error("Błąd zapisu do Supabase:", error);
         }
+
+        
       }
     } catch (err) {
       console.error(`Błąd RSS (${source.name}):`, err);
@@ -251,7 +261,16 @@ const categorySlug = CATEGORY_ALIASES[categoryKey] ?? source.category;
     success: true,
     fetched: savedResults.length,
     items: savedResults,
-    debug: debug ? { debugFeedsCount: debugFeeds.length, debugFeeds } : undefined,
+    debug: debug
+  ? {
+      debugFeedsCount: debugFeeds.length,
+      debugFeeds,
+
+      // 👇 DODAJEMY DIAGNOSTYKĘ INSERTU
+      insertErrors,       // ile insertów się nie udało
+      lastInsertError,    // szczegóły ostatniego błędu (jeśli był)
+    }
+  : undefined,
     version: "fetch-news-2026-02-18-1"
   });
 }
