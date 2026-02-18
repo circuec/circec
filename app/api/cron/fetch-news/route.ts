@@ -1,90 +1,75 @@
-// Importujemy typy i narzędzia z Next.js do obsługi endpointów API
-import { NextRequest, NextResponse } from 'next/server'
+// Next.js: typ requestu i helper do zwracania JSON
+import { NextRequest, NextResponse } from "next/server";
 
-// Biblioteka do czytania kanałów RSS (newsów)
-import Parser from 'rss-parser'
+// RSS parser: będziemy parsować XML -> obiekty JS
+import Parser from "rss-parser";
 
-// Oficjalny klient Supabase do komunikacji z bazą danych
-import { createClient } from '@supabase/supabase-js'
+// Supabase client: zapisujemy newsy do bazy
+import { createClient } from "@supabase/supabase-js";
 
-// Wymuszamy uruchamianie tego endpointu w środowisku Node.js
-// (RSS i Supabase NIE działają w Edge Runtime)
-export const runtime = 'nodejs'
+// Wymuszamy Node runtime (ważne dla fetch + bibliotek)
+export const runtime = "nodejs";
 
 /**
- * Tworzymy połączenie z Supabase
- * 
- * UŻYWAMY SERVICE ROLE KEY, bo:
- * - ten endpoint zapisuje dane do bazy
- * - jest uruchamiany tylko na serwerze (cron)
- * - klucz NIE trafia do przeglądarki
+ * 1) Łączymy się z Supabase przez SERVICE ROLE
+ *    - bo ten endpoint zapisuje do DB
+ *    - działa tylko po stronie serwera
  */
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
-// Tworzymy parser RSS
-const rssParser = new Parser()
+  process.env.SUPABASE_URL!, // adres Supabase
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // klucz serwerowy (NIE publiczny)
+);
 
 /**
- * Lista źródeł RSS
- * Każde źródło opisujemy:
- * - name: nazwa wyświetlana
- * - url: adres RSS
- * - category: kategoria w Twojej bazie
- * - language: język artykułów
+ * 2) RSS parser
+ *    - UWAGA: będziemy parsować przez parseString(), a nie parseURL()
+ *      bo chcemy mieć pełną kontrolę nad fetch (nagłówki, status, content-type)
+ */
+const rssParser = new Parser();
+
+/**
+ * 3) Źródła RSS
+ *    - category_slug MUSI istnieć w tabeli news_categories (jeśli masz FK)
  */
 const RSS_SOURCES = [
   {
-    name: 'Recycling Portal',
-    url: 'https://recyclingportal.eu/feed/',
-    category: 'recykling',
-    language: 'de'
+    name: "Recycling Portal",
+    url: "https://recyclingportal.eu/feed/",
+    category: "recykling",
+    language: "de",
   },
   {
-    name: 'Waste Management World',
-    url: 'https://waste-management-world.com/rss.xml',
-    category: 'goz',
-    language: 'en'
+    name: "Waste Management World",
+    url: "https://waste-management-world.com/rss.xml",
+    category: "goz",
+    language: "en",
   },
   {
-    name: 'Circular Online',
-    url: 'https://circularonline.co.uk/feed/',
-    category: 'goz',
-    language: 'en'
-  }
-]
+    name: "Circular Online",
+    url: "https://circularonline.co.uk/feed/",
+    category: "goz",
+    language: "en",
+  },
+];
 
-/**
- * Endpoint GET
- * Ten endpoint:
- * - jest wywoływany przez CRON (np. Vercel Cron)
- * - pobiera newsy z RSS
- * - zapisuje je do Supabase
- */
 export async function GET(req: NextRequest) {
-
-                                /**
-                                 * ZABEZPIECZENIE:
-                                 * Sprawdzamy czy zapytanie przyszło z crona,
-                                 * a nie od przypadkowej osoby z internetu**/
- 
-
-                              
- /**
-   * ZABEZPIECZENIE ENDPOINTU (2 tryby):
-   * 1) Vercel Cron → wysyła automatycznie nagłówek: x-vercel-cron: 1
-   * 2) Ręczne wywołanie (np. PowerShell) → Authorization: Bearer CRON_SECRET
-   *
-   * Dzięki temu:
-   * - cron z Vercel działa automatycznie,
-   * - Ty możesz testować endpoint ręcznie.
+  /**
+   * 4) DEBUG MODE
+   *    Jeśli wejdziesz na:
+   *    /api/cron/fetch-news?debug=1
+   *    to dostaniesz dodatkowe dane diagnostyczne.
    */
-  const isFromVercelCron = req.headers.get('x-vercel-cron') === '1';
+  const debug = new URL(req.url).searchParams.get("debug") === "1";
 
-  const authHeader = req.headers.get('authorization') || '';
-  const expected = `Bearer ${process.env.CRON_SECRET || ''}`;
+  /**
+   * 5) Zabezpieczenie endpointu:
+   *    - Vercel Cron potrafi wysyłać nagłówek x-vercel-cron: 1
+   *    - ręcznie testujesz przez Authorization: Bearer CRON_SECRET
+   */
+  const isFromVercelCron = req.headers.get("x-vercel-cron") === "1";
+
+  const authHeader = req.headers.get("authorization") || "";
+  const expected = `Bearer ${process.env.CRON_SECRET || ""}`;
 
   const isAuthorizedBySecret =
     !!process.env.CRON_SECRET && authHeader.trim() === expected.trim();
@@ -92,12 +77,13 @@ export async function GET(req: NextRequest) {
   if (!isFromVercelCron && !isAuthorizedBySecret) {
     return NextResponse.json(
       {
-        error: 'Unauthorized',
-        // Bezpieczny debug — nie pokazujemy sekretów, tylko „czy coś przyszło”
+        error: "Unauthorized",
         debug: {
           isFromVercelCron,
           hasAuthHeader: !!authHeader,
-          authHeaderStartsWithBearer: authHeader.toLowerCase().startsWith('bearer '),
+          authHeaderStartsWithBearer: authHeader
+            .toLowerCase()
+            .startsWith("bearer "),
           hasCronSecretEnv: !!process.env.CRON_SECRET,
         },
       },
@@ -105,100 +91,147 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Tu będziemy zbierać info o zapisanych artykułach
-  const results: Array<{ source: string; title: string }> = []
+  /**
+   * 6) Tu zbieramy wyniki (co zapisaliśmy do DB)
+   */
+  const savedResults: Array<{ source: string; title: string }> = [];
 
   /**
-   * Iterujemy po każdym źródle RSS
+   * 7) Tu zbieramy diagnostykę per feed (tylko jeśli debug=1)
+   */
+  const debugFeeds: Array<any> = [];
+
+  /**
+   * 8) Iterujemy po każdym źródle RSS
    */
   for (const source of RSS_SOURCES) {
     try {
-      // Pobieramy i parsujemy RSS
-      const feed = await rssParser.parseURL(source.url)
+      /**
+       * 8.1) Pobieramy RSS przez fetch()
+       *      Dodajemy User-Agent i Accept, bo niektóre serwisy blokują "anonimowe" boty.
+       */
+      const res = await fetch(source.url, {
+        method: "GET",
+        headers: {
+          "User-Agent": "CIRCECbot/1.0 (+https://www.circec.eu)",
+          Accept:
+            "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.7",
+        },
+        redirect: "follow",
+      });
+
+      const contentType = res.headers.get("content-type") || "";
+      const xmlText = await res.text();
+
+      // Jeśli debug, zapisz podstawowe informacje o odpowiedzi HTTP
+      if (debug) {
+        debugFeeds.push({
+          source: source.name,
+          url: source.url,
+          httpStatus: res.status,
+          contentType,
+          // próbka początku odpowiedzi - pokaże, czy to XML czy HTML
+          sample: xmlText.slice(0, 120),
+        });
+      }
 
       /**
-       * Bierzemy tylko 5 najnowszych artykułów,
-       * żeby:
-       * - nie przeciążyć API
-       * - nie przekroczyć limitu czasu na Vercel
+       * 8.2) Jeżeli serwer nie zwrócił 200 OK, pomijamy źródło
        */
-      for (const item of feed.items.slice(0, 5)) {
+      if (!res.ok) {
+        console.error(`RSS HTTP error (${source.name}):`, res.status);
+        continue;
+      }
 
-        // Jeśli artykuł nie ma tytułu lub linku — pomijamy
-        if (!item.title || !item.link) continue
+      /**
+       * 8.3) Parsujemy XML -> feed
+       */
+      const feed = await rssParser.parseString(xmlText);
+
+      // Jeżeli feed nie ma items albo ma 0, to nic nie zapisujemy
+      const items = feed.items || [];
+      if (debug) {
+        // dopisz informację, ile itemów parser znalazł
+        debugFeeds[debugFeeds.length - 1].parsedItemsCount = items.length;
+      }
+
+      /**
+       * 8.4) Bierzemy max 5 newsów z danego źródła
+       */
+      for (const item of items.slice(0, 5)) {
+        if (!item.title || !item.link) continue;
 
         /**
-         * Sprawdzamy, czy artykuł już istnieje w bazie
-         * (po unikalnym linku zewnętrznym)
+         * 8.5) Deduplikacja:
+         *      jeśli external_id (link) już istnieje w bazie, pomijamy
          */
         const { data: existing, error: existingError } = await supabase
-          .from('news')
-          .select('id')
-          .eq('external_id', item.link)
-          .maybeSingle()
+          .from("news")
+          .select("id")
+          .eq("external_id", item.link)
+          .maybeSingle();
 
-        // Jeśli był błąd przy sprawdzaniu — pomijamy
         if (existingError) {
-          console.error('Błąd sprawdzania istnienia:', existingError)
-          continue
+          console.error("Błąd sprawdzania istnienia:", existingError);
+          continue;
         }
 
-        // Jeśli artykuł już jest w bazie — pomijamy
-        if (existing) continue
+        if (existing) continue;
 
         /**
-         * Generujemy slug (adres URL) z tytułu
+         * 8.6) Generujemy slug:
+         *      - zamieniamy znaki na "bezpieczny URL"
+         *      - dokładamy Date.now() żeby unikać kolizji
          */
-        const baseSlug =
-          item.title
-            .toLowerCase()
-            .replace(/[^a-z0-9ąćęłńóśźż]+/g, '-')
-            .replace(/(^-|-$)/g, '')
-            .substring(0, 80)
+        const baseSlug = item.title
+          .toLowerCase()
+          .replace(/[^a-z0-9ąćęłńóśźż]+/g, "-")
+          .replace(/(^-|-$)/g, "")
+          .substring(0, 80);
 
         /**
-         * Zapisujemy artykuł do Supabase
-         * status = 'review' → artykuł czeka na akceptację
+         * 8.7) Insert do DB:
+         *      status = 'review' → admin później publikuje
          */
-        const { error } = await supabase
-          .from('news')
-          .insert({
-            title: item.title,
-            slug: `${baseSlug}-${Date.now()}`,
-            excerpt: item.contentSnippet?.substring(0, 300) || '',
-            content: (item as any).content || '',
-            source_type: 'rss',
-            source_name: source.name,
-            source_url: item.link,
-            external_id: item.link,
-            category_slug: source.category,
-            status: 'review',
-            published_at: item.pubDate
-              ? new Date(item.pubDate)
-              : new Date()
-          })
+        const { error } = await supabase.from("news").insert({
+          title: item.title,
+          slug: `${baseSlug}-${Date.now()}`,
+          excerpt: item.contentSnippet?.substring(0, 300) || "",
+          content: (item as any).content || "",
+          source_type: "rss",
+          source_name: source.name,
+          source_url: item.link,
+          external_id: item.link,
+          category_slug: source.category,
+          status: "review",
+          published_at: item.pubDate ? new Date(item.pubDate) : new Date(),
+        });
 
-        // Jeśli zapis się udał — dodajemy do wyników
         if (!error) {
-          results.push({
+          savedResults.push({
             source: source.name,
-            title: item.title.substring(0, 50)
-          })
+            title: item.title.substring(0, 60),
+          });
         } else {
-          console.error('Błąd zapisu do Supabase:', error)
+          console.error("Błąd zapisu do Supabase:", error);
         }
       }
     } catch (err) {
-      console.error(`Błąd RSS (${source.name}):`, err)
+      console.error(`Błąd RSS (${source.name}):`, err);
     }
   }
 
   /**
-   * Odpowiedź końcowa — informacja ile artykułów zapisano
+   * 9) Zwracamy wynik:
+   *    - fetched: ile zapisaliśmy
+   *    - items: krótkie info o zapisanych
+   *    - debugFeeds: diagnostyka (tylko gdy debug=1)
    */
   return NextResponse.json({
     success: true,
-    fetched: results.length,
-    items: results
-  })
+    fetched: savedResults.length,
+    items: savedResults,
+    debug: debug ? { debugFeedsCount: debugFeeds.length, debugFeeds } : undefined,
+    version: "fetch-news-2026-02-18-1"
+  });
 }
