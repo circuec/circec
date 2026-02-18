@@ -27,6 +27,15 @@ const supabase = createClient(
  */
 const rssParser = new Parser();
 
+// Mapujemy obce nazwy kategorii (np. z RSS) na slug-i w Supabase
+const CATEGORY_ALIASES: Record<string, string> = {
+  "recycling": "recykling",
+  "circular-economy": "goz",
+  "circular economy": "goz",
+  "waste": "odpady", // jeśli masz taką kategorię
+  "metals": "rynek-metali"
+};
+
 /**
  * 3) Źródła RSS
  *    - category_slug MUSI istnieć w tabeli news_categories (jeśli masz FK)
@@ -189,6 +198,16 @@ export async function GET(req: NextRequest) {
           .replace(/(^-|-$)/g, "")
           .substring(0, 80);
 
+
+       /**
+ * Normalizujemy kategorię:
+ * - zamieniamy na małe litery (żeby "Recycling" i "recycling" działało tak samo)
+ * - sprawdzamy, czy jest alias
+ * - jeśli nie ma aliasu, używamy tego co w source.category
+ */
+const categoryKey = source.category.trim().toLowerCase();
+const categorySlug = CATEGORY_ALIASES[categoryKey] ?? source.category;
+
         /**
          * 8.7) Insert do DB:
          *      status = 'review' → admin później publikuje
@@ -202,8 +221,9 @@ export async function GET(req: NextRequest) {
           source_name: source.name,
           source_url: item.link,
           external_id: item.link,
-          category_slug: source.category,
+        
           status: "review",
+          category_slug: categorySlug,
           published_at: item.pubDate ? new Date(item.pubDate) : new Date(),
         });
 
