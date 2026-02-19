@@ -82,8 +82,7 @@ export async function GET(req: NextRequest) {
 
   const isAuthorizedBySecret =
     !!process.env.CRON_SECRET && authHeader.trim() === expected.trim();
-let insertErrors = 0;
-let lastInsertError: any = null;
+    
   if (!isFromVercelCron && !isAuthorizedBySecret) {
     return NextResponse.json(
       {
@@ -100,7 +99,8 @@ let lastInsertError: any = null;
       { status: 401 }
     );
   }
-
+    let insertErrors = 0;
+    let lastInsertError: any = null;
   /**
    * 6) Tu zbieramy wyniki (co zapisaliśmy do DB)
    */
@@ -182,8 +182,14 @@ let lastInsertError: any = null;
           .maybeSingle();
 
         if (existingError) {
-          console.error("Błąd sprawdzania istnienia:", existingError);
-          continue;
+          // TYMCZASOWO: nie rób continue, tylko loguj i jedź dalej
+          if (debug) {
+            debugFeeds[debugFeeds.length - 1].selectError = {
+              message: existingError.message,
+              code: (existingError as any).code,
+            };
+          }
+          // continue;  ← zakomentuj tymczasowo
         }
 
         if (existing) continue;
