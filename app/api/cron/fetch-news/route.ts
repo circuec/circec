@@ -36,30 +36,6 @@ const CATEGORY_ALIASES: Record<string, string> = {
   "metals": "rynek-metali"
 };
 
-/**
- * 3) Źródła RSS
- *    - category_slug MUSI istnieć w tabeli news_categories (jeśli masz FK)
- */
-const RSS_SOURCES = [
-  {
-    name: "Recycling Portal",
-    url: "https://recyclingportal.eu/feed/",
-    category: "recykling",
-    language: "de",
-  },
-  {
-    name: "Waste Management World",
-    url: "https://waste-management-world.com/rss.xml",
-    category: "goz",
-    language: "en",
-  },
-  {
-    name: "Circular Online",
-    url: "https://circularonline.co.uk/feed/",
-    category: "goz",
-    language: "en",
-  },
-];
 
 export async function GET(req: NextRequest) {
   /**
@@ -112,7 +88,26 @@ export async function GET(req: NextRequest) {
   const debugFeeds: Array<any> = [];
 
   /**
-   * 8) Iterujemy po każdym źródle RSS
+   * 8) Pobieramy źródła RSS z bazy
+   */
+  const { data: RSS_SOURCES, error: sourcesError } = await supabase
+    .from("rss_sources")
+    .select("name, url, category, language")
+    .eq("active", true);
+
+  if (sourcesError || !RSS_SOURCES || RSS_SOURCES.length === 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Brak aktywnych źródeł RSS w bazie",
+        details: sourcesError?.message,
+      },
+      { status: 500 }
+    );
+  }
+
+  /**
+   * 9) Iterujemy po każdym źródle RSS
    */
   for (const source of RSS_SOURCES) {
     try {

@@ -5,23 +5,30 @@ import Link from 'next/link';
 export default async function NewsPage({ 
   params 
 }: { 
-  params: { slug: string } 
+  params: Promise<{ slug: string }>
 }) {
+  const { slug } = await params;
+
   const supabase = createClient(
     process.env.SUPABASE_URL!,
     process.env.SUPABASE_ANON_KEY!
   );
   
-  const { data: news } = await supabase
+    const { data: news, error } = await supabase
     .from('news')
     .select('*, category:news_categories(*)')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .eq('status', 'published')
     .single();
-    
+
+  console.log('slug szukany:', slug);
+  console.log('news:', news);
+  console.log('error:', error);
+
   if (!news) {
     notFound();
   }
+  
 
   return (
     <article className="max-w-4xl mx-auto px-4 py-12">
@@ -112,6 +119,7 @@ export default async function NewsPage({
             ))}
           </div>
         </div>
+        
       )}
     </article>
   );

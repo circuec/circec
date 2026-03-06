@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 
 # Wczytaj plik z Investing.com (zmień nazwę na swoją!)
-df = pd.read_csv('Silver Futures Historical Data(2).csv')
+df = pd.read_csv('Silver Futures Historical Data(2).csv') 
 
 # Funkcja naprawiająca daty (obsługuje różne formaty)
 def fix_date(date_str):
