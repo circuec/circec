@@ -44,12 +44,14 @@ const STATUS_COLORS: Record<string, string> = {
   published: "bg-emerald-100 text-emerald-800 border border-emerald-200",
   draft: "bg-gray-100 text-gray-700 border border-gray-200",
   review: "bg-amber-100 text-amber-800 border border-amber-200",
+  archived: "bg-slate-100 text-slate-500 border border-slate-200",
 };
 
 const STATUS_LABELS: Record<string, string> = {
   published: "opublikowany",
   draft: "szkic",
   review: "do weryfikacji",
+  archived: "archiwum",
 };
 
 export default function AdminAktualnosciPage() {
@@ -333,7 +335,7 @@ export default function AdminAktualnosciPage() {
     const { error } = await supabase.from("rss_sources").insert({
       name: sourceForm.name,
       url: sourceForm.url,
-      category: sourceForm.category,
+      category_slug: sourceForm.category,
       language: sourceForm.language,
       active: true,
     });
@@ -348,6 +350,22 @@ export default function AdminAktualnosciPage() {
     setActiveTab(tab);
     if (tab === "rss" && sources.length === 0 && !sourcesLoading) {
       fetchSources();
+    }
+  }
+
+  async function translatePending() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { alert("Brak sesji"); return; }
+    const res = await fetch("/api/admin/translate-pending", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const result = await res.json();
+    if (result.success) {
+      alert(`Przetłumaczono: ${result.processed} newsów`);
+      fetchNews();
+    } else {
+      alert("Błąd: " + (result.error || "nieznany"));
     }
   }
 
@@ -370,12 +388,20 @@ export default function AdminAktualnosciPage() {
         </div>
         <div className="flex gap-2">
           {activeTab === "news" && (
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="bg-emerald-600 text-white px-5 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium"
-            >
-              {showForm ? "Anuluj" : "+ Nowy artykuł"}
-            </button>
+            <>
+              <button
+                onClick={translatePending}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium"
+              >
+                Tłumacz oczekujące
+              </button>
+              <button
+                onClick={() => setShowForm(!showForm)}
+                className="bg-emerald-600 text-white px-5 py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium"
+              >
+                {showForm ? "Anuluj" : "+ Nowy artykuł"}
+              </button>
+            </>
           )}
           {activeTab === "rss" && (
             <button
@@ -491,6 +517,7 @@ export default function AdminAktualnosciPage() {
                 <option value="review">Do weryfikacji</option>
                 <option value="published">Opublikowane</option>
                 <option value="draft">Szkice</option>
+                <option value="archived">Archiwum</option>
               </select>
               <select className="border rounded-lg px-3 py-1.5 text-sm" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
                 <option value="all">Wszystkie kategorie</option>
@@ -576,7 +603,7 @@ export default function AdminAktualnosciPage() {
                         <span className="text-xs text-slate-400">
                           {item.source_name || "—"} • {new Date(item.created_at).toLocaleDateString("pl-PL")}
                         </span>
-                        <span className="text-xs text-rose-500 font-medium">❤ {item.likes || 0}</span>
+                        <span className="text-xs text-slate-400">⬆ {item.likes || 0}</span>
                       </div>
                       {item.ai_summary && (
                         <p className="text-xs text-slate-500 line-clamp-2 mb-2 bg-emerald-50 rounded px-2 py-1 border-l-2 border-emerald-300">
@@ -636,12 +663,6 @@ export default function AdminAktualnosciPage() {
                         }`}
                       >
                         {item.pinned ? "Odepnij" : "Przypnij"}
-                      </button>
-                      <button
-                        onClick={() => toggleLike(item.id, item.likes || 0)}
-                        className="bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1 rounded-lg text-xs font-medium"
-                      >
-                        ❤ Polub
                       </button>
                       <button
                         onClick={() => deleteNews(item.id, item.title)}

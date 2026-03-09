@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
    */
   const { data: RSS_SOURCES, error: sourcesError } = await supabase
     .from("rss_sources")
-    .select("name, url, category, language")
+    .select("name, url, category_slug, language")
     .eq("active", true);
 
   if (sourcesError || !RSS_SOURCES || RSS_SOURCES.length === 0) {
@@ -207,8 +207,8 @@ export async function GET(req: NextRequest) {
  * - sprawdzamy, czy jest alias
  * - jeśli nie ma aliasu, używamy tego co w source.category
  */
-const categoryKey = source.category.trim().toLowerCase();
-const categorySlug = CATEGORY_ALIASES[categoryKey] ?? source.category;
+const categoryKey = source.category_slug.trim().toLowerCase();
+const categorySlug = CATEGORY_ALIASES[categoryKey] ?? source.category_slug;
 
         /**
          * 8.7) Insert do DB:
