@@ -12,18 +12,24 @@ export default function Home() {
           Kompleksowe źródło wiedzy o GOZ, recyklingu oraz rynku metali i surowców wtórnych. 
           Monitorujemy zmiany, analizujemy dane, wspieramy transformację.
         </p>
-        <div className="flex gap-4 justify-center">
-          <Link 
-            href="/gospodarka-obiegu" 
+        <div className="flex flex-wrap gap-4 justify-center">
+          <Link
+            href="/gospodarka-obiegu"
             className="bg-emerald-700 text-white px-8 py-3 rounded-lg hover:bg-emerald-800 transition font-semibold"
           >
             Poznaj GOZ
           </Link>
-          <Link 
-            href="/rynek-metali" 
+          <Link
+            href="/rynek-metali"
             className="border-2 border-emerald-700 text-emerald-700 px-8 py-3 rounded-lg hover:bg-emerald-50 transition font-semibold"
           >
             Ceny Metali
+          </Link>
+          <Link
+            href="/aktualnosci"
+            className="border-2 border-slate-400 text-slate-700 px-8 py-3 rounded-lg hover:bg-slate-100 transition font-semibold"
+          >
+            Aktualności
           </Link>
         </div>
       </section>

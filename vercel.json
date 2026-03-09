@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/translate-news",
       "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/cron/recategorize-news",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/archive-news",
+      "schedule": "30 4 * * *"
     }
   ]
 }
